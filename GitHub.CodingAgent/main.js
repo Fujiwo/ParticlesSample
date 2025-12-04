@@ -12,6 +12,7 @@ const CONFIG = {
   particleSize: 0.15,
   cameraDistance: 30,
   autoRotateSpeed: 1.5,
+  loadingHideDelay: 2000, // milliseconds
 };
 
 // ============================================
@@ -332,7 +333,7 @@ async function initHandTracking() {
   // Hide loading after a short delay
   setTimeout(() => {
     loadingElement.classList.add('hidden');
-  }, 2000);
+  }, CONFIG.loadingHideDelay);
 }
 
 function onHandsResults(results) {
