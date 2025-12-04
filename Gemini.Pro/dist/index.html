@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive 3D Particle System</title>
+    <script type="module" crossorigin src="/assets/index-BxD5jBWD.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C3bfSmZE.css">
+  </head>
+  <body>
+    <div id="app">
+      <div id="ui-container">
+        <div class="panel">
+          <h3>Controls</h3>
+          <div class="control-group">
+            <label for="template-select">Template:</label>
+            <select id="template-select">
+              <option value="heart">Heart</option>
+              <option value="flower">Flower</option>
+              <option value="saturn">Saturn</option>
+              <option value="buddha">Buddha</option>
+              <option value="fireworks">Fireworks</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="color-picker">Color:</label>
+            <input type="color" id="color-picker" value="#ffffff" />
+          </div>
+          <div class="status">
+            <p>Hand Tracking: <span id="tracking-status">Initializing...</span></p>
+            <p>Gesture: <span id="gesture-status">None</span></p>
+          </div>
+        </div>
+      </div>
+      <video id="input-video" style="display: none;"></video>
+      <canvas id="output-canvas"></canvas>
+    </div>
+  </body>
+</html>
