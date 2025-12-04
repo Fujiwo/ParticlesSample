@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive 3D Particle System</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Video preview (small corner) -->
+      <div id="video-container">
+        <video id="input-video"></video>
+      </div>
+
+      <!-- 3D Canvas -->
+      <canvas id="canvas"></canvas>
+
+      <!-- Instructions overlay -->
+      <div id="instructions">
+        <h1>3D PARTICLE SYSTEM</h1>
+        <p>Move your hands apart to expand particles | Close hands to contract</p>
+      </div>
+
+      <!-- Loading overlay -->
+      <div id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">Initializing camera and hand tracking...</div>
+      </div>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
