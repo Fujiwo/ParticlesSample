@@ -1,0 +1,545 @@
+<!--
+Prompt:
+Create a real-time interactive 3D particle system with Three.js.
+
+requirements:
+
+1. Control the scaling and expansion of the particle group by detecting the tension and closing of both hands through the camera.
+
+2. Provide panels that can choose hearts/flowers/saturn/Buddha statues/fireworks and other templates
+
+3. Support the colour selector to adjust the particle colour
+
+4. Particles need to respond to gesture changes in real time. The interface is simple and modern.
+
+5. The interface is simple and modern
+-->
+<!--
+This is a complex request that combines 3D graphics (Three.js), Computer Vision (MediaPipe Hands), and UI design.
+
+Below is a complete, single-file HTML solution. It uses Three.js for rendering, MediaPipe for hand tracking, and lil-gui for the modern interface.
+
+How to use this:
+
+Save the code below as an .html file (e.g., particles.html).
+
+Open it in a modern browser (Chrome/Edge/Firefox).
+
+Allow Camera Access when prompted.
+
+Stand back slightly so the camera sees both hands.
+
+Move hands apart: The particle system expands/scales up.
+
+Move hands together: The particle system contracts.
+
+Open/Close Fists: Adds a "breathing" noise effect to the particles.
+
+code
+Html
+play_circle
+download
+content_copy
+expand_less
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Hand Particles</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
+        
+        /* Video Container (Hidden or Small) */
+        #video-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 200px;
+            height: 150px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            z-index: 10;
+            transform: scaleX(-1); /* Mirror the video */
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Loading Overlay */
+        #loading {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            z-index: 100;
+            flex-direction: column;
+            transition: opacity 0.5s;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid #333;
+            border-top: 4px solid #00d2ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* Instructions */
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            text-align: center;
+            pointer-events: none;
+            user-select: none;
+            z-index: 5;
+        }
+        h1 { margin: 0; font-size: 1.2rem; font-weight: 300; letter-spacing: 2px; }
+        p { margin: 5px 0 0; font-size: 0.9rem; }
+    </style>
+    
+    <!-- Import Libraries via CDN -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.154.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.154.0/examples/jsm/",
+                "lil-gui": "https://unpkg.com/lil-gui@0.18.0/dist/lil-gui.esm.min.js",
+                "@mediapipe/hands": "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js",
+                "@mediapipe/camera_utils": "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>Initializing AI & 3D Engine...</div>
+    </div>
+
+    <div id="instructions">
+        <h1>PARTICLE WEAVER</h1>
+        <p>Show both hands to control scale. Close fists to concentrate energy.</p>
+    </div>
+
+    <div id="video-container">
+        <video id="input_video"></video>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import GUI from 'lil-gui';
+        
+        // --- 1. GLOBAL VARIABLES ---
+        let scene, camera, renderer, particles, geometry, material;
+        let controls;
+        let clock = new THREE.Clock();
+        const particleCount = 25000;
+        
+        // Positions
+        let currentPositions;
+        let targetPositions;
+        
+        // Interaction State
+        const state = {
+            shape: 'Heart',
+            color: '#00ffff',
+            particleSize: 0.15,
+            handDistance: 1.0,  // Controlled by camera
+            handTension: 0.0,   // Controlled by camera
+            autoRotate: true
+        };
+
+        // --- 2. THREE.JS SETUP ---
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.z = 30;
+            camera.position.y = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 2.0;
+
+            initParticles();
+            initGUI();
+            
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // --- 3. PARTICLE SYSTEM ---
+        function initParticles() {
+            geometry = new THREE.BufferGeometry();
+            currentPositions = new Float32Array(particleCount * 3);
+            targetPositions = new Float32Array(particleCount * 3);
+
+            // Initialize random positions
+            for (let i = 0; i < particleCount * 3; i++) {
+                currentPositions[i] = (Math.random() - 0.5) * 50;
+                targetPositions[i] = currentPositions[i];
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
+
+            // Shader Material for nice glow
+            const sprite = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
+
+            material = new THREE.PointsMaterial({
+                size: state.particleSize,
+                color: new THREE.Color(state.color),
+                map: sprite,
+                sizeAttenuation: true,
+                transparent: true,
+                alphaTest: 0.5,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            // Generate initial shape
+            updateShape(state.shape);
+        }
+
+        // --- 4. SHAPE GENERATORS ---
+        function updateShape(shapeName) {
+            let func;
+            switch(shapeName) {
+                case 'Heart': func = getHeartPoint; break;
+                case 'Flower': func = getFlowerPoint; break;
+                case 'Saturn': func = getSaturnPoint; break;
+                case 'Buddha': func = getBuddhaPoint; break;
+                case 'Fireworks': func = getSpherePoint; break; // Base for fireworks
+                default: func = getHeartPoint;
+            }
+
+            for (let i = 0; i < particleCount; i++) {
+                const p = func(i);
+                targetPositions[i * 3] = p.x;
+                targetPositions[i * 3 + 1] = p.y;
+                targetPositions[i * 3 + 2] = p.z;
+            }
+        }
+
+        // Math for shapes
+        function getHeartPoint(i) {
+            // Parametric Heart
+            const t = Math.random() * Math.PI * 2;
+            const r = Math.random(); // volume
+            // Spread particles inside
+            const scale = 1.5;
+            let x = 16 * Math.pow(Math.sin(t), 3);
+            let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+            let z = (Math.random() - 0.5) * 10 * r; // Thickness
+
+            // Randomize slightly to fill volume
+            const vScale = Math.sqrt(Math.random()); 
+            
+            return { x: x * scale * vScale, y: y * scale * vScale, z: z };
+        }
+
+        function getSpherePoint(i) {
+            const u = Math.random();
+            const v = Math.random();
+            const theta = 2 * Math.PI * u;
+            const phi = Math.acos(2 * v - 1);
+            const r = 15 * Math.cbrt(Math.random()); // sphere volume
+            return {
+                x: r * Math.sin(phi) * Math.cos(theta),
+                y: r * Math.sin(phi) * Math.sin(theta),
+                z: r * Math.cos(phi)
+            };
+        }
+
+        function getFlowerPoint(i) {
+            const r = Math.random() * 20;
+            const theta = Math.random() * Math.PI * 2;
+            // Petal effect
+            const height = Math.sin(r * 0.5) * 5 + Math.cos(theta * 5) * 2;
+            return {
+                x: r * Math.cos(theta),
+                y: height,
+                z: r * Math.sin(theta)
+            };
+        }
+
+        function getSaturnPoint(i) {
+            const ratio = 0.7; // 70% ring, 30% planet
+            if (Math.random() > ratio) {
+                // Planet
+                const pt = getSpherePoint(i);
+                return { x: pt.x * 0.5, y: pt.y * 0.5, z: pt.z * 0.5 };
+            } else {
+                // Ring
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 12 + Math.random() * 8;
+                return {
+                    x: dist * Math.cos(angle),
+                    y: (Math.random() - 0.5) * 0.5,
+                    z: dist * Math.sin(angle)
+                };
+            }
+        }
+
+        function getBuddhaPoint(i) {
+            // Procedural "Meditating Figure" approximation using primitive volumes
+            // Base (legs)
+            const r = Math.random();
+            let x, y, z;
+            
+            if (r < 0.4) {
+                // Legs/Base (Squashed sphere)
+                const pt = getSpherePoint(i);
+                x = pt.x * 1.2;
+                y = Math.abs(pt.y) * 0.5 - 10;
+                z = pt.z * 1.0;
+            } else if (r < 0.8) {
+                // Body (Cylinderish)
+                const angle = Math.random() * Math.PI * 2;
+                const h = (Math.random() - 0.5) * 10;
+                const rad = 6 - (Math.abs(h)/2.5); // Taper
+                x = rad * Math.cos(angle) * Math.sqrt(Math.random());
+                y = h - 2;
+                z = rad * Math.sin(angle) * Math.sqrt(Math.random());
+            } else {
+                // Head
+                const pt = getSpherePoint(i);
+                x = pt.x * 0.3;
+                y = pt.y * 0.3 + 6;
+                z = pt.z * 0.3;
+            }
+            return {x, y, z};
+        }
+
+        // --- 5. LIL-GUI INTERFACE ---
+        function initGUI() {
+            const gui = new GUI({ title: 'Control Panel' });
+            
+            gui.add(state, 'shape', ['Heart', 'Flower', 'Saturn', 'Buddha', 'Fireworks'])
+               .onChange(val => updateShape(val))
+               .name("Template");
+               
+            gui.addColor(state, 'color')
+               .onChange(val => material.color.set(val))
+               .name("Particle Color");
+
+            gui.add(state, 'particleSize', 0.05, 1.0)
+               .onChange(val => material.size = val)
+               .name("Point Size");
+
+            gui.add(state, 'autoRotate').name("Auto Rotate")
+               .onChange(v => controls.autoRotate = v);
+
+            // Read-only monitors
+            const folder = gui.addFolder('Camera Metrics');
+            folder.add(state, 'handDistance').listen().disable();
+            folder.add(state, 'handTension').listen().disable();
+        }
+
+        // --- 6. MEDIAPIPE HANDS SETUP ---
+        async function initMediaPipe() {
+            const videoElement = document.getElementById('input_video');
+
+            // Load MediaPipe Hands via global script (loaded in HTML head)
+            const hands = new window.Hands({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }});
+
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onHandResults);
+
+            const cameraUtils = new window.Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            cameraUtils.start();
+        }
+
+        function onHandResults(results) {
+            // Hide loader once tracking starts
+            document.getElementById('loading').style.opacity = 0;
+            setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
+                const h1 = results.multiHandLandmarks[0];
+                const h2 = results.multiHandLandmarks[1];
+
+                // 1. Calculate expansion based on distance between wrists (index 0)
+                const distX = h1[0].x - h2[0].x;
+                const distY = h1[0].y - h2[0].y;
+                const dist = Math.sqrt(distX*distX + distY*distY);
+                
+                // Smoothly update global state
+                // Normal distance is roughly 0.2 to 0.8
+                let normalizedDist = (dist - 0.2) * 3.0; 
+                if(normalizedDist < 0.5) normalizedDist = 0.5;
+                if(normalizedDist > 2.5) normalizedDist = 2.5;
+
+                state.handDistance += (normalizedDist - state.handDistance) * 0.1;
+
+                // 2. Calculate tension (Closed Fist vs Open Hand)
+                // Measure distance between Wrist(0) and Middle Finger Tip(12) for both hands
+                const getFistFactor = (hand) => {
+                    const tip = hand[12];
+                    const wrist = hand[0];
+                    const d = Math.sqrt(Math.pow(tip.x - wrist.x, 2) + Math.pow(tip.y - wrist.y, 2));
+                    return d; // Small d = fist, Large d = open
+                };
+
+                const f1 = getFistFactor(h1);
+                const f2 = getFistFactor(h2);
+                const avgOpenness = (f1 + f2) / 2;
+                
+                // Map openness: 0.2 (closed) to 0.5 (open) -> Noise/Jitter factor
+                let tension = 1.0 - ((avgOpenness - 0.2) * 3);
+                if (tension < 0) tension = 0;
+                
+                state.handTension += (tension - state.handTension) * 0.1;
+            } else {
+                // Reset to default if hands not found
+                state.handDistance += (1.0 - state.handDistance) * 0.05;
+                state.handTension += (0.0 - state.handTension) * 0.05;
+            }
+        }
+
+        // --- 7. ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            const positions = particles.geometry.attributes.position.array;
+
+            // Update Loop
+            for (let i = 0; i < particleCount; i++) {
+                const ix = i * 3;
+                const iy = i * 3 + 1;
+                const iz = i * 3 + 2;
+
+                let tx = targetPositions[ix];
+                let ty = targetPositions[iy];
+                let tz = targetPositions[iz];
+
+                // --- APPLY FIREWORKS EFFECT ---
+                if (state.shape === 'Fireworks') {
+                    // Logic: Explode outward based on time
+                    const explosionSpeed = 2.0;
+                    const modTime = time % 3; // Loop every 3 seconds
+                    tx *= (1 + modTime * explosionSpeed);
+                    ty *= (1 + modTime * explosionSpeed);
+                    tz *= (1 + modTime * explosionSpeed);
+                    
+                    // Gravity fall
+                    ty -= Math.pow(modTime, 2) * 5;
+                }
+
+                // --- APPLY HAND SCALING ---
+                tx *= state.handDistance;
+                ty *= state.handDistance;
+                tz *= state.handDistance;
+
+                // --- APPLY HAND TENSION (NOISE) ---
+                // If fists are closed (high tension), add jitter
+                if (state.handTension > 0.1) {
+                    const noise = state.handTension * 2.0;
+                    tx += (Math.random() - 0.5) * noise;
+                    ty += (Math.random() - 0.5) * noise;
+                    tz += (Math.random() - 0.5) * noise;
+                }
+
+                // Lerp current position to target
+                // If Fireworks, snap instantly (or calculate physics), else smooth transition
+                const lerpSpeed = state.shape === 'Fireworks' ? 1.0 : 0.05;
+
+                positions[ix] += (tx - positions[ix]) * lerpSpeed;
+                positions[iy] += (ty - positions[iy]) * lerpSpeed;
+                positions[iz] += (tz - positions[iz]) * lerpSpeed;
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- START ---
+        initThree();
+        initMediaPipe(); // This is async and starts the camera
+        animate();
+
+    </script>
+</body>
+</html>
+
+<!--
+Key Features Explained:
+
+Hand Control Logic (Interaction):
+
+Scaling: The script calculates the Euclidean distance between the two hands (specifically the wrist landmarks). This distance is normalized and applied as a multiplier to the targetPositions of the 3D particles.
+
+Tension/Jitter: It calculates the distance between the wrist and the middle finger tip. If this distance is small (closed fist), handTension increases. This variable adds random noise to the particle positions, making the shape "vibrate" or buzz with energy when you clench your fists.
+
+Templates:
+
+Heart: Uses parametric equations.
+
+Saturn: Combines a sphere distribution with a flat ring distribution.
+
+Buddha: Uses a procedural approach (stacking shaped volumes) to approximate a sitting figure without needing external .obj files (which simplifies deployment).
+
+Fireworks: Uses a time-based modulo operator to reset positions and expand them outward with gravity logic.
+
+UI:
+
+Uses lil-gui for a standard, sleek control panel on the top right.
+
+Includes a color picker, shape selector, and particle size slider.
+
+Displays "Camera Metrics" (read-only) so you can visualize the data coming from your hands.
+
+Performance & Tech:
+
+Three.js BufferGeometry: Handles 25,000 particles efficiently by operating on flat typed arrays (Float32Array).
+
+Lerp (Linear Interpolation): Particles don't just teleport; they flow smoothly from one shape to another.
+
+MediaPipe via CDN: The script loads the Computer Vision models directly from the web, so no local installation is needed.
+-->
